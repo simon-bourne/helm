@@ -437,6 +437,11 @@ See `helm-case-fold-search' for more info."
   :group 'helm
   :type 'symbol)
 
+(defcustom helm-get-persistent-action-window 'helm-get-persistent-action-window-default
+  "Function to get a window for displaying the persistent action."
+  :group 'helm
+  :type 'function)
+
 (defcustom helm-reuse-last-window-split-state nil
   "Use the same state of window split, vertical or horizontal.
 `helm-toggle-resplit-window' for the next helm session will use
@@ -6079,31 +6084,34 @@ window to maintain visibility."
                   (delete-other-windows))))))))))
 (put 'helm-execute-persistent-action 'helm-only t)
 
+(defun helm-get-persistent-action-window-default (&optional split-onewindow)
+  (let (next-win cur-win)
+    (cond ((and (window-live-p helm-persistent-action-display-window)
+                (not (member helm-persistent-action-display-window
+                             (get-buffer-window-list helm-buffer))))
+           helm-persistent-action-display-window)
+          ((and helm--buffer-in-new-frame-p helm-initial-frame)
+           (with-selected-frame helm-initial-frame (selected-window)))
+          (split-onewindow (split-window))
+          ;; Fix Issue #2050 with dedicated window.
+          ((window-dedicated-p
+            (setq next-win (next-window (selected-window) 1)))
+           (with-helm-after-update-hook
+             (and (window-live-p helm-persistent-action-display-window)
+                  (delete-window helm-persistent-action-display-window)))
+           (split-window))
+          ((window-dedicated-p
+            (setq cur-win (get-buffer-window helm-current-buffer)))
+           (split-window))
+          (cur-win)
+          (t next-win))))
+
 (defun helm-persistent-action-display-window (&optional split-onewindow)
   "Return the window that will be used for persistent action.
 If SPLIT-ONEWINDOW is non-`nil' window is split in persistent action."
   (with-helm-window
-    (let (next-win cur-win)
-      (setq helm-persistent-action-display-window
-            (cond ((and (window-live-p helm-persistent-action-display-window)
-                        (not (member helm-persistent-action-display-window
-                                     (get-buffer-window-list helm-buffer))))
-                   helm-persistent-action-display-window)
-                  ((and helm--buffer-in-new-frame-p helm-initial-frame)
-                   (with-selected-frame helm-initial-frame (selected-window)))
-                  (split-onewindow (split-window))
-                  ;; Fix Issue #2050 with dedicated window.
-                  ((window-dedicated-p
-                    (setq next-win (next-window (selected-window) 1)))
-                   (with-helm-after-update-hook
-                     (and (window-live-p helm-persistent-action-display-window)
-                          (delete-window helm-persistent-action-display-window)))
-                   (split-window))
-                  ((window-dedicated-p
-                    (setq cur-win (get-buffer-window helm-current-buffer)))
-                   (split-window))
-                  (cur-win)
-                  (t next-win))))))
+    (setq helm-persistent-action-display-window
+          (funcall helm-get-persistent-action-window split-onewindow))))
 
 (defun helm-select-persistent-action-window (&optional split-onewindow)
   "Select the window that will be used for persistent action.
